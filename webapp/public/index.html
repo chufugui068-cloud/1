@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>竞彩智能分析平台</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1>竞彩智能分析平台（网页版）</h1>
+    <p>数据分析与参考建议，不构成投注承诺。</p>
+  </header>
+
+  <main class="container">
+    <section class="card controls">
+      <h2>1) 数据源与筛选</h2>
+      <div class="row">
+        <label>数据源</label>
+        <select id="sourceSelect">
+          <option value="">全部</option>
+          <option value="500">500彩票网</option>
+          <option value="球探">球探网</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>联赛</label>
+        <select id="leagueSelect">
+          <option value="">全部</option>
+        </select>
+      </div>
+      <button id="reloadBtn">刷新今日比赛</button>
+    </section>
+
+    <section class="card">
+      <h2>2) 今日竞彩足球比赛</h2>
+      <div id="matches" class="list"></div>
+    </section>
+
+    <section class="card">
+      <h2>3) 预测详情（ELO + BT + 蒙特卡洛5000次）</h2>
+      <div id="detail" class="detail">点击一场比赛查看预测详情。</div>
+    </section>
+
+    <section class="card">
+      <h2>4) VIP（月卡）</h2>
+      <div id="vipStatus">状态读取中...</div>
+      <button id="rechargeBtn">立即充值（模拟）</button>
+    </section>
+
+    <section class="card">
+      <h2>5) 历史记录与自我进化</h2>
+      <p id="weightText"></p>
+      <div id="history" class="list"></div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<view class="page">
+  <view class="card">
+    <view class="section-title">今日竞彩足球比赛</view>
+    <picker mode="selector" range="{{leagueOptions}}" value="{{leagueIndex}}" bindchange="onLeagueChange">
+      <view class="filter">联赛筛选：{{leagueOptions[leagueIndex]}}</view>
+    </picker>
+  </view>
+
+  <block wx:if="{{loading}}">
+    <view class="card">加载中...</view>
+  </block>
+
+  <block wx:for="{{list}}" wx:key="matchId">
+    <view class="card item" bindtap="goDetail" data-id="{{item.matchId}}">
+      <view class="league">{{item.league}} · {{item.matchTime}}</view>
+      <view class="teams">{{item.homeTeam}} vs {{item.awayTeam}}</view>
+      <view class="time">预测更新：{{item.latestPredictTime}}</view>
+    </view>
+  </block>
+
+  <block wx:if="{{!loading && list.length === 0}}">
+    <view class="card">暂无比赛数据</view>
+  </block>
+</view>

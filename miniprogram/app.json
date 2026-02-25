@@ -1,0 +1,14 @@
+{
+  "pages": [
+    "pages/matches/index/index",
+    "pages/predict/detail/detail"
+  ],
+  "window": {
+    "navigationBarTitleText": "竞彩智能分析",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundTextStyle": "light"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

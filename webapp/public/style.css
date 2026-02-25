@@ -1,0 +1,19 @@
+* { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+body { margin: 0; background: #f3f5fb; color: #1f2937; }
+header { background: linear-gradient(120deg, #1d4ed8, #3b82f6); color: #fff; padding: 24px; }
+header h1 { margin: 0 0 6px; font-size: 24px; }
+header p { margin: 0; opacity: 0.9; }
+.container { max-width: 1000px; margin: 18px auto; padding: 0 12px 24px; display: grid; gap: 12px; }
+.card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 3px 16px rgba(0,0,0,0.06); }
+h2 { margin: 0 0 10px; font-size: 18px; }
+.row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+label { width: 56px; color: #4b5563; }
+select, button { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; }
+button { cursor: pointer; background: #2563eb; color: #fff; border: none; }
+button:hover { opacity: 0.9; }
+.list { display: grid; gap: 8px; }
+.match { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
+.match small { color: #6b7280; display: block; }
+.detail p { margin: 6px 0; }
+.tag { display: inline-block; background: #e0ecff; color: #1e40af; border-radius: 99px; font-size: 12px; padding: 2px 8px; margin-right: 6px; }
+.warn { background: #fff4db; color: #92400e; padding: 8px; border-radius: 8px; }

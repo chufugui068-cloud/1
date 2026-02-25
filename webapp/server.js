@@ -6,6 +6,7 @@ const { URL } = require('url');
 const PORT = process.env.PORT || 8787;
 const MATCH_CACHE_TTL_MS = Number(process.env.MATCH_CACHE_TTL_MS || 3 * 60 * 1000);
 const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 8000);
+const LEAGUE_REGEX = /(英超|西甲|德甲|意甲|法甲|中超|欧冠|欧联|荷甲|葡超|日职|韩职|澳超|巴甲|阿甲|墨超|苏超|挪超|瑞超|英冠|西乙|德乙|意乙|法乙)/;
 
 const defaultTeams = [
   { name: '阿森纳', league: '英超', elo: 1685, bt: 1.18, attack: 1.75, defense: 0.92, form: 0.76 },
@@ -112,55 +113,68 @@ function getOrCreateTeam(name, league) {
   return team;
 }
 
-function parseMatchesFrom500(html) {
+function parseRowsByPair(html, source, pairRegex) {
   const rows = [];
   const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   let m;
   while ((m = trRegex.exec(html)) !== null) {
-    const rowHtml = m[1];
-    const cleaned = sanitizeText(rowHtml);
-    if (!cleaned.includes('VS') && !cleaned.includes('vs')) continue;
+    const cleaned = sanitizeText(m[1]);
+    const pair = cleaned.match(pairRegex);
+    if (!pair) continue;
 
-    const homeAway = cleaned.match(/([\u4e00-\u9fa5A-Za-z0-9\.\-\(\)]+)\s*(?:VS|vs|v)\s*([\u4e00-\u9fa5A-Za-z0-9\.\-\(\)]+)/);
-    if (!homeAway) continue;
-
-    const leagueMatch = cleaned.match(/(英超|西甲|德甲|意甲|法甲|中超|欧冠|欧联|荷甲|葡超|日职|韩职|澳超|巴甲|阿甲|墨超|苏超|挪超|瑞超)/);
+    const leagueMatch = cleaned.match(LEAGUE_REGEX);
     const timeMatch = cleaned.match(/(\d{2}:\d{2})/);
 
     rows.push({
       league: leagueMatch ? leagueMatch[1] : '其他联赛',
       time: timeMatch ? timeMatch[1] : '--:--',
-      home: homeAway[1],
-      away: homeAway[2],
-      source: '500'
+      home: pair[1],
+      away: pair[2],
+      source
     });
   }
   return rows;
 }
 
-function parseMatchesFromQiutan(html) {
+function parsePairsFromWholeHtml(html, source) {
+  const cleaned = sanitizeText(html);
   const rows = [];
-  const lineRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  let m;
-  while ((m = lineRegex.exec(html)) !== null) {
-    const cleaned = sanitizeText(m[1]);
-    if (!cleaned.includes('-')) continue;
+  const patterns = [
+    /([一-龥A-Za-z0-9\.\-\(\)]{2,30})\s*(?:VS|vs|v|对阵)\s*([一-龥A-Za-z0-9\.\-\(\)]{2,30})/g,
+    /([一-龥A-Za-z0-9\.\-\(\)]{2,30})\s*-\s*([一-龥A-Za-z0-9\.\-\(\)]{2,30})/g
+  ];
 
-    const teamPair = cleaned.match(/([\u4e00-\u9fa5A-Za-z0-9\.\-\(\)]+)\s*[-]\s*([\u4e00-\u9fa5A-Za-z0-9\.\-\(\)]+)/);
-    if (!teamPair) continue;
-
-    const leagueMatch = cleaned.match(/(英超|西甲|德甲|意甲|法甲|中超|欧冠|欧联|荷甲|葡超|日职|韩职|澳超|巴甲|阿甲|墨超|苏超|挪超|瑞超)/);
-    const timeMatch = cleaned.match(/(\d{2}:\d{2})/);
-
-    rows.push({
-      league: leagueMatch ? leagueMatch[1] : '其他联赛',
-      time: timeMatch ? timeMatch[1] : '--:--',
-      home: teamPair[1],
-      away: teamPair[2],
-      source: '球探'
-    });
+  for (const reg of patterns) {
+    let m;
+    while ((m = reg.exec(cleaned)) !== null) {
+      const start = Math.max(0, m.index - 40);
+      const end = Math.min(cleaned.length, m.index + m[0].length + 40);
+      const ctx = cleaned.slice(start, end);
+      const leagueMatch = ctx.match(LEAGUE_REGEX)
+        || cleaned.slice(Math.max(0, m.index - 120), Math.min(cleaned.length, m.index + 120)).match(LEAGUE_REGEX);
+      const timeMatch = ctx.match(/(\d{2}:\d{2})/);
+      rows.push({
+        league: leagueMatch ? leagueMatch[1] : '其他联赛',
+        time: timeMatch ? timeMatch[1] : '--:--',
+        home: m[1],
+        away: m[2],
+        source
+      });
+      if (rows.length > 300) return rows;
+    }
   }
+
   return rows;
+}
+
+function parseMatchesFrom500(html) {
+  const byRow = parseRowsByPair(html, '500', /([一-龥A-Za-z0-9\.\-\(\)]+)\s*(?:VS|vs|v)\s*([一-龥A-Za-z0-9\.\-\(\)]+)/);
+  return byRow.length ? byRow : parsePairsFromWholeHtml(html, '500');
+}
+
+function parseMatchesFromQiutan(html) {
+  const byRow = parseRowsByPair(html, '球探', /([一-龥A-Za-z0-9\.\-\(\)]+)\s*(?:-|VS|vs|v)\s*([一-龥A-Za-z0-9\.\-\(\)]+)/);
+  return byRow.length ? byRow : parsePairsFromWholeHtml(html, '球探');
 }
 
 async function fetchHtml(url) {
@@ -207,8 +221,8 @@ async function refreshLiveMatches(force = false) {
   }
 
   const sources = [
-    { name: '500', url: 'https://trade.500.com/jczq/index.shtml', parser: parseMatchesFrom500 },
-    { name: '球探', url: 'https://bf.titan007.com/football/Over_2026.htm', parser: parseMatchesFromQiutan }
+    { name: '500', url: process.env.SOURCE_500_URL || 'https://trade.500.com/jczq/', parser: parseMatchesFrom500 },
+    { name: '球探', url: process.env.SOURCE_QIUTAN_URL || 'https://live.titan007.com/oldIndexall.aspx', parser: parseMatchesFromQiutan }
   ];
 
   const collected = [];
@@ -411,6 +425,17 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/matches/refresh' && req.method === 'POST') {
     const live = await refreshLiveMatches(true);
     return json(res, 200, { success: true, count: live.list.length, mode: live.from, message: live.message });
+  }
+
+  if (pathname === '/api/scrape/health' && req.method === 'GET') {
+    const live = await refreshLiveMatches(false);
+    return json(res, 200, {
+      mode: live.from,
+      fetchedAt: live.fetchedAt,
+      count: live.list.length,
+      message: live.message,
+      sample: live.list.slice(0, 5)
+    });
   }
 
   if (pathname === '/api/predict/detail' && req.method === 'GET') {

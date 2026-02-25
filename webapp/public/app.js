@@ -111,6 +111,11 @@ async function loadVip() {
     : '当前为普通用户，可查看基础分析。';
 }
 
+async function runDiag() {
+  const d = await api('/api/scrape/health');
+  alert(`抓取状态: ${d.mode}\n比赛数: ${d.count}\n信息: ${d.message}`);
+}
+
 async function rechargeVip() {
   await api('/api/vip/recharge', {
     method: 'POST',
@@ -123,6 +128,7 @@ async function rechargeVip() {
 
 $('reloadBtn').addEventListener('click', () => loadMatches(false));
 $('forceRefreshBtn').addEventListener('click', () => loadMatches(true));
+$('diagBtn').addEventListener('click', runDiag);
 $('sourceSelect').addEventListener('change', loadMatches);
 $('leagueSelect').addEventListener('change', loadMatches);
 $('rechargeBtn').addEventListener('click', rechargeVip);

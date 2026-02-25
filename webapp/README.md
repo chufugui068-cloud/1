@@ -58,3 +58,16 @@ npm start
 ### 可选环境变量
 - `MATCH_CACHE_TTL_MS`：比赛列表缓存时长（默认 180000ms）
 - `FETCH_TIMEOUT_MS`：抓取超时时间（默认 8000ms）
+
+
+## 实时抓取失败怎么排查
+1. 先点页面里的“抓取诊断”按钮，看 `mode/message`。
+2. 如果是 `fallback`，通常是目标站反爬、网络限制或页面结构变更。
+3. 在 Windows 终端里设置备用网址后重启：
+```powershell
+$env:SOURCE_500_URL="https://trade.500.com/jczq/"
+$env:SOURCE_QIUTAN_URL="https://live.titan007.com/oldIndexall.aspx"
+npm start
+```
+4. 适当增大超时：`$env:FETCH_TIMEOUT_MS=15000`。
+5. 若仍失败，保留 fallback 不中断服务，并更新解析规则（`parseMatchesFrom500/parseMatchesFromQiutan`）。

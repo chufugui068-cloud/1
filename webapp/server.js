@@ -114,6 +114,35 @@ function getOrCreateTeam(name, league) {
   return team;
 }
 
+
+function looksLikeGarbageTeamName(name = '') {
+  const v = (name || '').trim();
+  if (!v) return true;
+  if (v.length < 2 || v.length > 30) return true;
+
+  const lower = v.toLowerCase();
+  const badTokens = ['script', 'javascript', 'function', 'var', 'const', 'let', 'http', 'www', 'undefined', 'null'];
+  if (badTokens.some((t) => lower.includes(t))) return true;
+
+  if (/^\d{4}-\d{2}(-\d{2})?$/.test(v)) return true;
+  if (/^\d{1,4}([:\-]\d{1,4}){1,3}$/.test(v)) return true;
+  if (/^\d+$/.test(v)) return true;
+
+  const cleaned = v.replace(/[\s\-\.\(\)一-龥A-Za-z]/g, '');
+  if (cleaned.length > 0) return true;
+
+  return false;
+}
+
+function isValidMatchRow(row) {
+  if (!row || !row.home || !row.away) return false;
+  const home = row.home.trim();
+  const away = row.away.trim();
+  if (home === away) return false;
+  if (looksLikeGarbageTeamName(home) || looksLikeGarbageTeamName(away)) return false;
+  return true;
+}
+
 function parseRowsByPair(html, source, pairRegex) {
   const rows = [];
   const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
@@ -129,8 +158,8 @@ function parseRowsByPair(html, source, pairRegex) {
     rows.push({
       league: leagueMatch ? leagueMatch[1] : '其他联赛',
       time: timeMatch ? timeMatch[1] : '--:--',
-      home: pair[1],
-      away: pair[2],
+      home: (pair[1] || "").trim(),
+      away: (pair[2] || "").trim(),
       source
     });
   }
@@ -157,8 +186,8 @@ function parsePairsFromWholeHtml(html, source) {
       rows.push({
         league: leagueMatch ? leagueMatch[1] : '其他联赛',
         time: timeMatch ? timeMatch[1] : '--:--',
-        home: m[1],
-        away: m[2],
+        home: (m[1] || "").trim(),
+        away: (m[2] || "").trim(),
         source
       });
       if (rows.length > 300) return rows;
@@ -200,7 +229,7 @@ function normalizeLiveMatches(rawRows) {
   const nowDate = new Date().toISOString().slice(0, 10);
   const unique = new Map();
   rawRows.forEach((r) => {
-    if (!r.home || !r.away) return;
+    if (!isValidMatchRow(r)) return;
     const key = `${r.source}-${r.league}-${r.home}-${r.away}-${r.time}`;
     if (!unique.has(key)) unique.set(key, r);
   });

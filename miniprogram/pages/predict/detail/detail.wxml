@@ -1,0 +1,49 @@
+<view class="page">
+  <block wx:if="{{loading}}">
+    <view class="card">加载中...</view>
+  </block>
+
+  <block wx:if="{{!loading && detail.match}}">
+    <view class="card">
+      <view class="section-title">{{detail.match.homeTeam}} vs {{detail.match.awayTeam}}</view>
+      <view>{{detail.match.league}} · {{detail.match.matchTime}}</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">胜平负概率</view>
+      <view>胜：{{detail.probability.winText}}</view>
+      <view>平：{{detail.probability.drawText}}</view>
+      <view>负：{{detail.probability.loseText}}</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">让球胜平负概率</view>
+      <view>让胜：{{detail.probability.handicapWinText}}</view>
+      <view>让平：{{detail.probability.handicapDrawText}}</view>
+      <view>让负：{{detail.probability.handicapLoseText}}</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">总进球区间</view>
+      <block wx:for="{{detail.goalsRange}}" wx:key="range">
+        <view>{{item.range}} 球：{{item.probText}}</view>
+      </block>
+    </view>
+
+    <view class="card">
+      <view class="section-title">TOP3 波胆</view>
+      <block wx:for="{{detail.topScores}}" wx:key="score">
+        <view>{{index + 1}}. {{item.score}}（{{item.probText}}）</view>
+      </block>
+    </view>
+
+    <view class="card">
+      <view class="section-title">推荐理由</view>
+      <view>{{detail.reason}}</view>
+    </view>
+
+    <view class="card disclaimer">
+      免责声明：本工具仅提供数据分析与参考建议，不构成投注承诺，请理性决策。
+    </view>
+  </block>
+</view>

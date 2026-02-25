@@ -1,0 +1,6 @@
+.page { padding-bottom: 24rpx; }
+.filter { color: #555; }
+.item { display: flex; flex-direction: column; gap: 10rpx; }
+.league { font-size: 24rpx; color: #666; }
+.teams { font-size: 32rpx; font-weight: 600; }
+.time { font-size: 24rpx; color: #888; }

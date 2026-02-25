@@ -4,26 +4,35 @@ const path = require('path');
 const { URL } = require('url');
 
 const PORT = process.env.PORT || 8787;
+const MATCH_CACHE_TTL_MS = Number(process.env.MATCH_CACHE_TTL_MS || 3 * 60 * 1000);
+const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 8000);
 
-const teams = [
+const defaultTeams = [
   { name: '阿森纳', league: '英超', elo: 1685, bt: 1.18, attack: 1.75, defense: 0.92, form: 0.76 },
   { name: '切尔西', league: '英超', elo: 1602, bt: 1.02, attack: 1.42, defense: 1.05, form: 0.55 },
   { name: '皇马', league: '西甲', elo: 1711, bt: 1.23, attack: 1.92, defense: 0.86, form: 0.81 },
   { name: '马竞', league: '西甲', elo: 1660, bt: 1.11, attack: 1.58, defense: 0.93, form: 0.69 },
-  { name: '拜仁', league: '德甲', elo: 1702, bt: 1.21, attack: 1.88, defense: 0.90, form: 0.78 },
+  { name: '拜仁', league: '德甲', elo: 1702, bt: 1.21, attack: 1.88, defense: 0.9, form: 0.78 },
   { name: '多特', league: '德甲', elo: 1636, bt: 1.06, attack: 1.62, defense: 1.08, form: 0.61 }
 ];
 
-const todayMatches = [
+const fallbackMatches = [
   { id: 10001, source: '500', league: '英超', time: '2026-03-01 20:00', home: '阿森纳', away: '切尔西' },
   { id: 10002, source: '500', league: '西甲', time: '2026-03-01 22:00', home: '皇马', away: '马竞' },
   { id: 10003, source: '球探', league: '德甲', time: '2026-03-01 21:30', home: '拜仁', away: '多特' }
 ];
 
 const state = {
-  weights: { elo: 0.35, bt: 0.30, mc: 0.35 },
+  weights: { elo: 0.35, bt: 0.3, mc: 0.35 },
   history: [],
-  vipUsers: new Set()
+  vipUsers: new Set(),
+  teams: [...defaultTeams],
+  liveMatches: {
+    list: [...fallbackMatches],
+    fetchedAt: 0,
+    from: 'fallback',
+    message: 'using fallback data'
+  }
 };
 
 function json(res, code, payload) {
@@ -36,7 +45,11 @@ function json(res, code, payload) {
 
 function serveStatic(res, filePath) {
   const ext = path.extname(filePath);
-  const map = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8' };
+  const map = {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8'
+  };
   fs.readFile(filePath, (err, data) => {
     if (err) {
       res.writeHead(404);
@@ -45,6 +58,16 @@ function serveStatic(res, filePath) {
     res.writeHead(200, { 'Content-Type': map[ext] || 'text/plain; charset=utf-8' });
     res.end(data);
   });
+}
+
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i += 1) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function sanitizeText(text = '') {
+  return text.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function sigmoid(x) {
@@ -63,7 +86,163 @@ function poissonSample(lambda) {
 }
 
 function findTeam(name) {
-  return teams.find((t) => t.name === name);
+  return state.teams.find((t) => t.name === name);
+}
+
+function createTeamProfile(name, league = '未知联赛') {
+  const seed = hashString(`${league}-${name}`);
+  const variance = (seed % 60) - 30;
+  return {
+    name,
+    league,
+    elo: 1500 + variance,
+    bt: 0.95 + ((seed % 40) / 100),
+    attack: 1.2 + ((seed % 70) / 100),
+    defense: 0.9 + ((seed % 30) / 100),
+    form: 0.45 + ((seed % 45) / 100)
+  };
+}
+
+function getOrCreateTeam(name, league) {
+  let team = findTeam(name);
+  if (!team) {
+    team = createTeamProfile(name, league);
+    state.teams.push(team);
+  }
+  return team;
+}
+
+function parseMatchesFrom500(html) {
+  const rows = [];
+  const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let m;
+  while ((m = trRegex.exec(html)) !== null) {
+    const rowHtml = m[1];
+    const cleaned = sanitizeText(rowHtml);
+    if (!cleaned.includes('VS') && !cleaned.includes('vs')) continue;
+
+    const homeAway = cleaned.match(/([\u4e00-\u9fa5A-Za-z0-9\.\-\(\)]+)\s*(?:VS|vs|v)\s*([\u4e00-\u9fa5A-Za-z0-9\.\-\(\)]+)/);
+    if (!homeAway) continue;
+
+    const leagueMatch = cleaned.match(/(英超|西甲|德甲|意甲|法甲|中超|欧冠|欧联|荷甲|葡超|日职|韩职|澳超|巴甲|阿甲|墨超|苏超|挪超|瑞超)/);
+    const timeMatch = cleaned.match(/(\d{2}:\d{2})/);
+
+    rows.push({
+      league: leagueMatch ? leagueMatch[1] : '其他联赛',
+      time: timeMatch ? timeMatch[1] : '--:--',
+      home: homeAway[1],
+      away: homeAway[2],
+      source: '500'
+    });
+  }
+  return rows;
+}
+
+function parseMatchesFromQiutan(html) {
+  const rows = [];
+  const lineRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let m;
+  while ((m = lineRegex.exec(html)) !== null) {
+    const cleaned = sanitizeText(m[1]);
+    if (!cleaned.includes('-')) continue;
+
+    const teamPair = cleaned.match(/([\u4e00-\u9fa5A-Za-z0-9\.\-\(\)]+)\s*[-]\s*([\u4e00-\u9fa5A-Za-z0-9\.\-\(\)]+)/);
+    if (!teamPair) continue;
+
+    const leagueMatch = cleaned.match(/(英超|西甲|德甲|意甲|法甲|中超|欧冠|欧联|荷甲|葡超|日职|韩职|澳超|巴甲|阿甲|墨超|苏超|挪超|瑞超)/);
+    const timeMatch = cleaned.match(/(\d{2}:\d{2})/);
+
+    rows.push({
+      league: leagueMatch ? leagueMatch[1] : '其他联赛',
+      time: timeMatch ? timeMatch[1] : '--:--',
+      home: teamPair[1],
+      away: teamPair[2],
+      source: '球探'
+    });
+  }
+  return rows;
+}
+
+async function fetchHtml(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        Accept: 'text/html,application/xhtml+xml'
+      }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function normalizeLiveMatches(rawRows) {
+  const nowDate = new Date().toISOString().slice(0, 10);
+  const unique = new Map();
+  rawRows.forEach((r) => {
+    if (!r.home || !r.away) return;
+    const key = `${r.source}-${r.league}-${r.home}-${r.away}-${r.time}`;
+    if (!unique.has(key)) unique.set(key, r);
+  });
+
+  return [...unique.values()].map((r, idx) => ({
+    id: hashString(`${r.source}-${r.league}-${r.home}-${r.away}-${r.time}`) % 100000000 + idx,
+    source: r.source,
+    league: r.league || '其他联赛',
+    time: r.time && r.time.includes(':') ? `${nowDate} ${r.time}` : `${nowDate} 00:00`,
+    home: r.home,
+    away: r.away
+  }));
+}
+
+async function refreshLiveMatches(force = false) {
+  const now = Date.now();
+  if (!force && now - state.liveMatches.fetchedAt < MATCH_CACHE_TTL_MS && state.liveMatches.list.length) {
+    return state.liveMatches;
+  }
+
+  const sources = [
+    { name: '500', url: 'https://trade.500.com/jczq/index.shtml', parser: parseMatchesFrom500 },
+    { name: '球探', url: 'https://bf.titan007.com/football/Over_2026.htm', parser: parseMatchesFromQiutan }
+  ];
+
+  const collected = [];
+  const errors = [];
+
+  for (const source of sources) {
+    try {
+      const html = await fetchHtml(source.url);
+      const parsed = source.parser(html);
+      if (parsed.length) collected.push(...parsed);
+      else errors.push(`${source.name}:未解析到比赛`);
+    } catch (e) {
+      errors.push(`${source.name}:${e.message}`);
+    }
+  }
+
+  const normalized = normalizeLiveMatches(collected);
+  if (normalized.length) {
+    state.liveMatches = {
+      list: normalized,
+      fetchedAt: now,
+      from: 'live-scrape',
+      message: errors.length ? `部分源失败: ${errors.join('; ')}` : 'ok'
+    };
+  } else {
+    state.liveMatches = {
+      list: [...fallbackMatches],
+      fetchedAt: now,
+      from: 'fallback',
+      message: `实时抓取失败，已回退示例数据: ${errors.join('; ') || 'no data'}`
+    };
+  }
+
+  return state.liveMatches;
 }
 
 function simulateMatch(home, away, n = 5000) {
@@ -109,9 +288,8 @@ function simulateMatch(home, away, n = 5000) {
 }
 
 function predictionForMatch(match) {
-  const home = findTeam(match.home);
-  const away = findTeam(match.away);
-  if (!home || !away) return null;
+  const home = getOrCreateTeam(match.home, match.league);
+  const away = getOrCreateTeam(match.away, match.league);
 
   const eloDiff = home.elo - away.elo + 50;
   const eloWin = sigmoid(eloDiff / 120);
@@ -217,13 +395,28 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/matches/today' && req.method === 'GET') {
     const source = url.searchParams.get('source');
     const league = url.searchParams.get('league');
-    const filtered = todayMatches.filter((m) => (!source || m.source === source) && (!league || m.league === league));
-    return json(res, 200, { list: filtered, leagues: [...new Set(todayMatches.map((m) => m.league))] });
+    const forceRefresh = url.searchParams.get('refresh') === '1';
+
+    const live = await refreshLiveMatches(forceRefresh);
+    const filtered = live.list.filter((m) => (!source || m.source === source) && (!league || m.league === league));
+    return json(res, 200, {
+      list: filtered,
+      leagues: [...new Set(live.list.map((m) => m.league))],
+      fetchedAt: live.fetchedAt,
+      mode: live.from,
+      message: live.message
+    });
+  }
+
+  if (pathname === '/api/matches/refresh' && req.method === 'POST') {
+    const live = await refreshLiveMatches(true);
+    return json(res, 200, { success: true, count: live.list.length, mode: live.from, message: live.message });
   }
 
   if (pathname === '/api/predict/detail' && req.method === 'GET') {
     const matchId = Number(url.searchParams.get('matchId'));
-    const match = todayMatches.find((m) => m.id === matchId);
+    const live = await refreshLiveMatches(false);
+    const match = live.list.find((m) => m.id === matchId);
     if (!match) return json(res, 404, { message: '比赛不存在' });
     const r = predictionForMatch(match);
     return json(res, 200, {

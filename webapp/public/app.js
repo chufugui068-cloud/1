@@ -16,13 +16,14 @@ function pct(v) {
   return `${(v * 100).toFixed(1)}%`;
 }
 
-async function loadMatches() {
+async function loadMatches(force = false) {
   const source = $('sourceSelect').value;
   const league = $('leagueSelect').value;
   const qs = new URLSearchParams();
   if (source) qs.set('source', source);
   if (league) qs.set('league', league);
 
+  if (force) qs.set('refresh', '1');
   const data = await api(`/api/matches/today?${qs.toString()}`);
   state.matches = data.list;
 
@@ -35,6 +36,8 @@ async function loadMatches() {
       leagueSelect.appendChild(opt);
     });
   }
+
+  $('dataStatus').textContent = `数据状态：${data.mode || '-'}；${data.message || ''}`;
 
   const matchesEl = $('matches');
   matchesEl.innerHTML = '';
@@ -118,7 +121,8 @@ async function rechargeVip() {
   alert('充值成功（演示模式）');
 }
 
-$('reloadBtn').addEventListener('click', loadMatches);
+$('reloadBtn').addEventListener('click', () => loadMatches(false));
+$('forceRefreshBtn').addEventListener('click', () => loadMatches(true));
 $('sourceSelect').addEventListener('change', loadMatches);
 $('leagueSelect').addEventListener('change', loadMatches);
 $('rechargeBtn').addEventListener('click', rechargeVip);
